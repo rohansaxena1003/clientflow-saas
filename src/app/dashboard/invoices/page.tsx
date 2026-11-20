@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 
 interface ProjectOption {
   id: string;
@@ -28,6 +29,10 @@ export default function InvoicesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Filtering State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+
   // Modal & Form State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [projectId, setProjectId] = useState("");
@@ -35,7 +40,6 @@ export default function InvoicesPage() {
   const [dueDate, setDueDate] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Fetch both invoices and projects on initial mount
   useEffect(() => {
     async function fetchData() {
       try {
@@ -44,9 +48,7 @@ export default function InvoicesPage() {
           fetch("/api/projects"),
         ]);
 
-        if (!invoicesRes.ok || !projectsRes.ok) {
-          throw new Error("Failed to load data");
-        }
+        if (!invoicesRes.ok || !projectsRes.ok) throw new Error("Failed to load data");
 
         const [invoicesData, projectsData] = await Promise.all([
           invoicesRes.json(),
@@ -55,9 +57,7 @@ export default function InvoicesPage() {
 
         setInvoices(invoicesData);
         setProjects(projectsData);
-        if (projectsData.length > 0) {
-          setProjectId(projectsData[0].id);
-        }
+        if (projectsData.length > 0) setProjectId(projectsData[0].id);
       } catch (err) {
         console.error(err);
         setError("Could not load invoices or projects.");
@@ -65,11 +65,9 @@ export default function InvoicesPage() {
         setLoading(false);
       }
     }
-
     fetchData();
   }, []);
 
-  // Create a new invoice
   async function handleCreateInvoice(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -79,21 +77,14 @@ export default function InvoicesPage() {
       const res = await fetch("/api/invoices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          amount: parseFloat(amount),
-          dueDate,
-        }),
+        body: JSON.stringify({ projectId, amount: parseFloat(amount), dueDate }),
       });
-
       const data = await res.json();
-
       if (!res.ok) {
         setError(data.error || "Failed to create invoice.");
         setSubmitting(false);
         return;
       }
-
       setInvoices((prev) => [data, ...prev]);
       setAmount("");
       setDueDate("");
@@ -105,7 +96,6 @@ export default function InvoicesPage() {
     }
   }
 
-  // Quick update status (e.g., Mark as Paid)
   async function handleMarkAsPaid(id: string) {
     try {
       const res = await fetch(`/api/invoices/${id}`, {
@@ -113,35 +103,25 @@ export default function InvoicesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "PAID" }),
       });
-
       if (!res.ok) {
         alert("Failed to update invoice status.");
         return;
       }
-
       const updatedInvoice = await res.json();
-      setInvoices((prev) =>
-        prev.map((inv) => (inv.id === id ? updatedInvoice : inv))
-      );
+      setInvoices((prev) => prev.map((inv) => (inv.id === id ? updatedInvoice : inv)));
     } catch (err) {
       console.error(err);
     }
   }
 
-  // Delete an invoice
   async function handleDeleteInvoice(id: string) {
     if (!confirm("Are you sure you want to delete this invoice?")) return;
-
     try {
-      const res = await fetch(`/api/invoices/${id}`, {
-        method: "DELETE",
-      });
-
+      const res = await fetch(`/api/invoices/${id}`, { method: "DELETE" });
       if (!res.ok) {
         alert("Failed to delete invoice.");
         return;
       }
-
       setInvoices((prev) => prev.filter((inv) => inv.id !== id));
     } catch (err) {
       console.error(err);
@@ -150,30 +130,32 @@ export default function InvoicesPage() {
 
   function getStatusBadge(status: Invoice["status"]) {
     switch (status) {
-      case "PAID":
-        return "bg-emerald-100 text-emerald-800 border-emerald-200";
-      case "OVERDUE":
-        return "bg-red-100 text-red-800 border-red-200";
-      default:
-        return "bg-amber-100 text-amber-800 border-amber-200";
+      case "PAID": return "bg-emerald-100 text-emerald-800 border-emerald-200";
+      case "OVERDUE": return "bg-red-100 text-red-800 border-red-200";
+      default: return "bg-amber-100 text-amber-800 border-amber-200";
     }
   }
 
-  if (loading) {
-    return <div className="text-slate-600">Loading invoices...</div>;
-  }
+  // Filter Logic
+  const filteredInvoices = invoices.filter((inv) => {
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch =
+      inv.invoiceNumber.toLowerCase().includes(searchLower) ||
+      inv.project.title.toLowerCase().includes(searchLower) ||
+      inv.project.clientName.toLowerCase().includes(searchLower);
+    const matchesStatus = statusFilter === "ALL" || inv.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  if (loading) return <div className="text-slate-600">Loading invoices...</div>;
 
   return (
     <div className="max-w-6xl mx-auto">
-      {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Invoices</h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Generate client invoices and track payment statuses
-          </p>
+          <p className="text-sm text-slate-600 mt-1">Generate client invoices and track payment statuses</p>
         </div>
-
         <button
           onClick={() => setIsModalOpen(true)}
           disabled={projects.length === 0}
@@ -188,20 +170,33 @@ export default function InvoicesPage() {
           You need to create at least one Project before generating an invoice.
         </div>
       )}
+      {error && <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>}
 
-      {error && (
-        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-700">
-          {error}
-        </div>
-      )}
+      {/* Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <input
+          type="text"
+          placeholder="Search by invoice #, project, or client..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1 px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+        >
+          <option value="ALL">All Statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="PAID">Paid</option>
+          <option value="OVERDUE">Overdue</option>
+        </select>
+      </div>
 
-      {/* Invoices Table */}
-      {invoices.length === 0 ? (
+      {filteredInvoices.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-          <h3 className="text-lg font-medium text-slate-900">No invoices yet</h3>
-          <p className="text-sm text-slate-500 mt-1">
-            Click &quot;+ Create Invoice&quot; to bill a client for an active project.
-          </p>
+          <h3 className="text-lg font-medium text-slate-900">No invoices found</h3>
+          <p className="text-sm text-slate-500 mt-1">Try adjusting your search or status filter.</p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
@@ -217,54 +212,37 @@ export default function InvoicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 text-sm">
-              {invoices.map((invoice) => (
+              {filteredInvoices.map((invoice) => (
                 <tr key={invoice.id} className="hover:bg-slate-50">
-                  <td className="py-4 px-6 font-mono font-medium text-slate-900">
-                    {invoice.invoiceNumber}
-                  </td>
+                  <td className="py-4 px-6 font-mono font-medium text-slate-900">{invoice.invoiceNumber}</td>
                   <td className="py-4 px-6">
-                    <div className="font-medium text-slate-900">
-                      {invoice.project.title}
-                    </div>
-                    <div className="text-xs text-slate-500">
-                      {invoice.project.clientName}
-                    </div>
+                    <div className="font-medium text-slate-900">{invoice.project.title}</div>
+                    <div className="text-xs text-slate-500">{invoice.project.clientName}</div>
                   </td>
                   <td className="py-4 px-6 font-semibold text-slate-900">
-                    ${invoice.amount.toLocaleString("en-US", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    ${invoice.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </td>
                   <td className="py-4 px-6 text-slate-600">
-                    {new Date(invoice.dueDate).toLocaleDateString("en-US", {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {new Date(invoice.dueDate).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
                   </td>
                   <td className="py-4 px-6">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusBadge(
-                        invoice.status
-                      )}`}
-                    >
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusBadge(invoice.status)}`}>
                       {invoice.status}
                     </span>
                   </td>
                   <td className="py-4 px-6 text-right space-x-3">
+                    <Link
+                      href={`/dashboard/invoices/${invoice.id}`}
+                      className="text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
+                    >
+                      View PDF
+                    </Link>
                     {invoice.status !== "PAID" && (
-                      <button
-                        onClick={() => handleMarkAsPaid(invoice.id)}
-                        className="text-emerald-600 hover:text-emerald-800 font-medium cursor-pointer"
-                      >
-                        Mark as Paid
+                      <button onClick={() => handleMarkAsPaid(invoice.id)} className="text-emerald-600 hover:text-emerald-800 font-medium cursor-pointer">
+                        Mark Paid
                       </button>
                     )}
-                    <button
-                      onClick={() => handleDeleteInvoice(invoice.id)}
-                      className="text-red-600 hover:text-red-800 font-medium cursor-pointer"
-                    >
+                    <button onClick={() => handleDeleteInvoice(invoice.id)} className="text-red-600 hover:text-red-800 font-medium cursor-pointer">
                       Delete
                     </button>
                   </td>
@@ -275,77 +253,29 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      {/* Create Invoice Modal */}
+      {/* Create Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-slate-200">
-            <h2 className="text-xl font-bold text-slate-900 mb-4">
-              Create New Invoice
-            </h2>
-
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Create New Invoice</h2>
             <form onSubmit={handleCreateInvoice} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Select Project
-                </label>
-                <select
-                  required
-                  value={projectId}
-                  onChange={(e) => setProjectId(e.target.value)}
-                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                >
-                  {projects.map((proj) => (
-                    <option key={proj.id} value={proj.id}>
-                      {proj.title} ({proj.clientName})
-                    </option>
-                  ))}
+                <label className="block text-sm font-medium text-slate-700 mb-1">Select Project</label>
+                <select required value={projectId} onChange={(e) => setProjectId(e.target.value)} className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600">
+                  {projects.map((proj) => <option key={proj.id} value={proj.id}>{proj.title} ({proj.clientName})</option>)}
                 </select>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Amount (USD)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="1"
-                  required
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="1500.00"
-                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Amount (USD)</label>
+                <input type="number" step="0.01" min="1" required value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="1500.00" className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600" />
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Due Date
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
-                />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Due Date</label>
+                <input type="date" required value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600" />
               </div>
-
               <div className="flex justify-end space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg transition cursor-pointer"
-                >
-                  {submitting ? "Generating..." : "Generate Invoice"}
-                </button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer">Cancel</button>
+                <button type="submit" disabled={submitting} className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg transition cursor-pointer">{submitting ? "Generating..." : "Generate"}</button>
               </div>
             </form>
           </div>

@@ -2,254 +2,151 @@
 
 import { useState, useEffect } from "react";
 
-type Project = {
+interface Project {
   id: string;
   title: string;
   clientName: string;
   clientEmail: string;
-  status: string;
+  status: "ACTIVE" | "COMPLETED" | "ON_HOLD";
   budget: number;
-};
+}
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    title: "",
-    clientName: "",
-    clientEmail: "",
-    budget: "",
-    status: "ACTIVE",
-  });
+  // Filtering State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
-  // Fetch projects on load
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [budget, setBudget] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
   useEffect(() => {
+    async function fetchProjects() {
+      try {
+        const res = await fetch("/api/projects");
+        if (!res.ok) throw new Error("Failed to load projects");
+        const data = await res.json();
+        setProjects(data);
+      } catch (err) {
+        setError("Could not load projects.");
+      } finally {
+        setLoading(false);
+      }
+    }
     fetchProjects();
   }, []);
 
-  async function fetchProjects() {
-    try {
-      const res = await fetch("/api/projects");
-      if (!res.ok) throw new Error("Failed to fetch projects");
-      const data = await res.json();
-      setProjects(data);
-    } catch (err) {
-      setError("Could not load projects.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Open modal for Creating
-  function handleAddNew() {
-    setEditingId(null);
-    setFormData({ title: "", clientName: "", clientEmail: "", budget: "", status: "ACTIVE" });
-    setIsModalOpen(true);
-  }
-
-  // Open modal for Editing
-  function handleEdit(project: Project) {
-    setEditingId(project.id);
-    setFormData({
-      title: project.title,
-      clientName: project.clientName,
-      clientEmail: project.clientEmail,
-      budget: project.budget.toString(),
-      status: project.status,
-    });
-    setIsModalOpen(true);
-  }
-
-  // Handle Create or Update Submit
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleCreateProject(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
-    
-    const url = editingId ? `/api/projects/${editingId}` : "/api/projects";
-    const method = editingId ? "PATCH" : "POST";
-
+    setSubmitting(true);
     try {
-      const res = await fetch(url, {
-        method,
+      const res = await fetch("/api/projects", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ title, clientName, clientEmail, budget: parseFloat(budget) }),
       });
-
-      if (!res.ok) throw new Error("Failed to save project");
-      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setProjects([data, ...projects]);
       setIsModalOpen(false);
-      fetchProjects(); // Refresh the list
+      setTitle(""); setClientName(""); setClientEmail(""); setBudget("");
     } catch (err) {
-      setError("Failed to save project. Please try again.");
+      alert("Failed to create project");
+    } finally {
+      setSubmitting(false);
     }
   }
 
-  // Handle Delete
   async function handleDelete(id: string) {
-    if (!confirm("Are you sure you want to delete this project?")) return;
-
+    if (!confirm("Delete this project?")) return;
     try {
-      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete");
-      fetchProjects(); // Refresh the list
+      await fetch(`/api/projects/${id}`, { method: "DELETE" });
+      setProjects(projects.filter(p => p.id !== id));
     } catch (err) {
-      alert("Could not delete project.");
+      alert("Failed to delete project");
     }
   }
+
+  const filteredProjects = projects.filter((p) => {
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = p.title.toLowerCase().includes(searchLower) || p.clientName.toLowerCase().includes(searchLower);
+    const matchesStatus = statusFilter === "ALL" || p.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  if (loading) return <div className="text-slate-600">Loading projects...</div>;
 
   return (
     <div className="max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Projects</h1>
-        <button
-          onClick={handleAddNew}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-        >
-          + Add Project
+        <button onClick={() => setIsModalOpen(true)} className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition cursor-pointer">
+          + New Project
         </button>
       </div>
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-lg border border-red-200">
-          {error}
-        </div>
-      )}
+      {error && <div className="mb-4 text-red-600">{error}</div>}
 
-      {loading ? (
-        <p className="text-slate-500">Loading projects...</p>
-      ) : projects.length === 0 ? (
-        <div className="bg-white p-12 text-center rounded-xl border border-slate-200 shadow-sm">
-          <p className="text-slate-500">No projects found. Create your first one!</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => (
-            <div key={project.id} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-semibold text-lg text-slate-900">{project.title}</h3>
-                  <p className="text-sm text-slate-500">{project.clientName}</p>
-                </div>
-                <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${
-                  project.status === 'ACTIVE' ? 'bg-green-100 text-green-700' : 
-                  project.status === 'COMPLETED' ? 'bg-blue-100 text-blue-700' : 
-                  'bg-yellow-100 text-yellow-700'
-                }`}>
-                  {project.status}
-                </span>
-              </div>
-              <div className="text-sm text-slate-600 mb-6 flex-1">
-                <p>Email: {project.clientEmail}</p>
-                <p>Budget: ${project.budget.toLocaleString()}</p>
-              </div>
-              <div className="flex gap-3 border-t border-slate-100 pt-4 mt-auto">
-                <button
-                  onClick={() => handleEdit(project)}
-                  className="flex-1 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors cursor-pointer text-center"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(project.id)}
-                  className="flex-1 text-sm font-medium text-red-600 hover:text-red-800 transition-colors cursor-pointer text-center"
-                >
-                  Delete
-                </button>
-              </div>
+      {/* Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <input
+          type="text"
+          placeholder="Search projects or clients..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="flex-1 px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+        />
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3.5 py-2 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600"
+        >
+          <option value="ALL">All Statuses</option>
+          <option value="ACTIVE">Active</option>
+          <option value="COMPLETED">Completed</option>
+          <option value="ON_HOLD">On Hold</option>
+        </select>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredProjects.map((project) => (
+          <div key={project.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 flex flex-col">
+            <h3 className="font-semibold text-slate-900 text-lg truncate">{project.title}</h3>
+            <p className="text-sm text-slate-500 mt-1">{project.clientName}</p>
+            <div className="mt-4 flex-1">
+              <p className="text-sm font-medium text-slate-900">Budget: ${project.budget.toLocaleString()}</p>
+              <span className="inline-block mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800 border border-slate-200">
+                {project.status}
+              </span>
             </div>
-          ))}
-        </div>
-      )}
+            <div className="mt-6 pt-4 border-t border-slate-100 flex justify-end">
+              <button onClick={() => handleDelete(project.id)} className="text-red-600 hover:text-red-800 text-sm font-medium cursor-pointer">
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
 
-      {/* Form Modal Overlay */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-lg max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-slate-900 mb-4">
-              {editingId ? "Edit Project" : "New Project"}
-            </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Project Title</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                  placeholder="Website Redesign"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Client Name</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.clientName}
-                  onChange={(e) => setFormData({ ...formData, clientName: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                  placeholder="Acme Corp"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Client Email</label>
-                <input
-                  type="email"
-                  required
-                  value={formData.clientEmail}
-                  onChange={(e) => setFormData({ ...formData, clientEmail: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                  placeholder="contact@acme.com"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Budget ($)</label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  step="0.01"
-                  value={formData.budget}
-                  onChange={(e) => setFormData({ ...formData, budget: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                  placeholder="5000"
-                />
-              </div>
-              
-              {editingId && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:outline-none"
-                  >
-                    <option value="ACTIVE">Active</option>
-                    <option value="ON_HOLD">On Hold</option>
-                    <option value="COMPLETED">Completed</option>
-                  </select>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 mt-6">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors cursor-pointer"
-                >
-                  {editingId ? "Save Changes" : "Create Project"}
-                </button>
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">New Project</h2>
+            <form onSubmit={handleCreateProject} className="space-y-4">
+              <input type="text" required placeholder="Project Title" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              <input type="text" required placeholder="Client Name" value={clientName} onChange={(e) => setClientName(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              <input type="email" required placeholder="Client Email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              <input type="number" required placeholder="Budget" value={budget} onChange={(e) => setBudget(e.target.value)} className="w-full px-3 py-2 border rounded-lg" />
+              <div className="flex justify-end space-x-3 pt-2">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 hover:bg-slate-100 rounded-lg">Cancel</button>
+                <button type="submit" disabled={submitting} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Create</button>
               </div>
             </form>
           </div>
