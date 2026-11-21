@@ -19,7 +19,6 @@ interface Invoice {
 }
 
 export default function InvoiceViewPage({ params }: { params: Promise<{ id: string }> }) {
-  // In Next.js 16, dynamic params must be unwrapped using React.use()
   const resolvedParams = use(params);
   const invoiceId = resolvedParams.id;
   const router = useRouter();
@@ -27,12 +26,11 @@ export default function InvoiceViewPage({ params }: { params: Promise<{ id: stri
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function fetchInvoice() {
       try {
-        // We fetch all invoices and filter the specific one
-        // (In a massive app we'd make a GET /api/invoices/[id] route, but this is highly efficient for now)
         const res = await fetch("/api/invoices");
         if (!res.ok) throw new Error("Failed to load invoices");
         
@@ -53,6 +51,18 @@ export default function InvoiceViewPage({ params }: { params: Promise<{ id: stri
     fetchInvoice();
   }, [invoiceId]);
 
+  const handleCopyLink = async () => {
+    try {
+      // Construct the absolute URL to your new public route
+      const publicUrl = `${window.location.origin}/public/invoice/${invoiceId}`;
+      await navigator.clipboard.writeText(publicUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy link:", err);
+    }
+  };
+
   if (loading) return <div className="p-8 text-slate-600">Loading invoice data...</div>;
   if (error || !invoice) return (
     <div className="p-8">
@@ -63,15 +73,28 @@ export default function InvoiceViewPage({ params }: { params: Promise<{ id: stri
 
   return (
     <div className="max-w-4xl mx-auto pb-12">
-      {/* Top Action Bar - We will use 'print:hidden' in Step 3 so this doesn't show in the PDF */}
+      {/* Top Action Bar (Hidden when actually printing) */}
       <div className="flex items-center justify-between mb-8 print:hidden">
         <Link href="/dashboard/invoices" className="text-slate-600 hover:text-slate-900 font-medium flex items-center gap-2 transition">
           ← Back to Invoices
         </Link>
-        {/* We will wire up this PDF download button in Step 3 */}
-        <button onClick={() => window.print()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition cursor-pointer shadow-sm">
-          Download PDF
-        </button>
+        <div className="flex gap-3">
+          {/* New Copy Public Link Button */}
+          <button 
+            onClick={handleCopyLink}
+            className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition cursor-pointer shadow-sm flex items-center gap-2"
+          >
+            {copied ? "Copied!" : "Copy Public Link"}
+          </button>
+          
+          {/* Existing Download PDF Button */}
+          <button 
+            onClick={() => window.print()}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition cursor-pointer shadow-sm"
+          >
+            Download PDF
+          </button>
+        </div>
       </div>
 
       {/* The Actual Invoice Paper (A4 Style) */}

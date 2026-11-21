@@ -5,11 +5,16 @@ import { verifyToken, AUTH_COOKIE_NAME } from "@/lib/auth";
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // 1. Explicitly bypass public routes so unauthenticated clients can view them
+  if (pathname.startsWith("/public")) {
+    return NextResponse.next();
+  }
+
   // Read the HttpOnly JWT cookie from the incoming request
   const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
   const user = token ? await verifyToken(token) : null;
 
-  // 1. Protect all /dashboard routes
+  // 2. Protect all /dashboard routes
   if (pathname.startsWith("/dashboard")) {
     if (!user) {
       const loginUrl = new URL("/login", request.url);
@@ -17,7 +22,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // 2. Redirect already-logged-in users away from /login and /register
+  // 3. Redirect already-logged-in users away from /login and /register
   if (pathname === "/login" || pathname === "/register") {
     if (user) {
       const dashboardUrl = new URL("/dashboard", request.url);
@@ -30,5 +35,5 @@ export async function middleware(request: NextRequest) {
 
 // Configure which routes trigger this middleware
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/register"],
+  matcher: ["/dashboard/:path*", "/login", "/register", "/public/:path*"],
 };
