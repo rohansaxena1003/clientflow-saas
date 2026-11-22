@@ -3,6 +3,8 @@
 import { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import SendInvoiceButton from "./SendInvoiceButton";
+
 
 interface Invoice {
   id: string;
@@ -94,6 +96,8 @@ export default function InvoiceViewPage({ params }: { params: Promise<{ id: stri
           >
             Download PDF
           </button>
+          <SendInvoiceButton invoiceId={invoice.id} />
+
         </div>
       </div>
 
