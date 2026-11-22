@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import PrintButton from "./PrintButton";
+import CheckoutButton from "./CheckoutButton";
 
 export default async function PublicInvoicePage({
   params,
@@ -9,7 +10,6 @@ export default async function PublicInvoicePage({
 }) {
   const { id } = await params;
 
-  // Fetch the invoice along with the linked project and freelancer (user) details
   const invoice = await prisma.invoice.findUnique({
     where: { id },
     include: {
@@ -29,7 +29,6 @@ export default async function PublicInvoicePage({
     },
   });
 
-  // If someone enters an invalid URL, show a 404 page
   if (!invoice) {
     notFound();
   }
@@ -38,7 +37,7 @@ export default async function PublicInvoicePage({
     <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8 font-sans">
       <div className="max-w-3xl mx-auto bg-white shadow-md rounded-lg overflow-hidden border border-slate-200">
         
-        {/* Print Action Bar (Hidden when actually printing) */}
+        {/* Print Action Bar */}
         <div className="bg-slate-900 px-8 py-4 flex justify-between items-center print:hidden">
           <p className="text-slate-300 text-sm">Secure Public Invoice View</p>
           <PrintButton />
@@ -99,15 +98,25 @@ export default async function PublicInvoicePage({
             </tbody>
           </table>
 
-          {/* Total */}
+          {/* Totals & Payment Action */}
           <div className="mt-8 flex justify-end">
-            <div className="w-1/2">
-              <div className="flex justify-between py-3 border-t-2 border-slate-800">
+            <div className="w-full sm:w-1/2">
+              <div className="flex justify-between py-3 border-t-2 border-slate-800 mb-4">
                 <span className="text-lg font-bold text-slate-900">Total Due</span>
                 <span className="text-lg font-bold text-slate-900">
                   ${invoice.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </span>
               </div>
+              
+              {/* Dynamic Payment UI */}
+              {invoice.status === "PAID" ? (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center print:hidden">
+                  <p className="text-green-800 font-bold">This invoice has been paid in full.</p>
+                  <p className="text-green-600 text-sm mt-1">Thank you for your business!</p>
+                </div>
+              ) : (
+                <CheckoutButton invoiceId={invoice.id} amount={invoice.amount} />
+              )}
             </div>
           </div>
         </div>
